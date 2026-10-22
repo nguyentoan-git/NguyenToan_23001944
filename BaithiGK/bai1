@@ -1,0 +1,21 @@
+<?php
+// Bài 1
+$name = "Nguyễn Văn An";
+echo "Họ tên sinh viên: $name <br>";
+
+$score = rand(0,10);
+echo "Điểm của sinh viên: $score <br>";
+
+if ($score >= 8.0) {
+    echo "Xếp hạng: Giỏi";
+} 
+elseif ($score >= 6.5 && $score < 8.0) { 
+    echo "Xếp hạng: Khá";
+} 
+elseif ($score >= 5.0 && $score < 6.5) {
+    echo "Xếp hạng: Trung Bình";
+} 
+else {
+    echo "Xếp hạng: Yếu";
+}
+?>
