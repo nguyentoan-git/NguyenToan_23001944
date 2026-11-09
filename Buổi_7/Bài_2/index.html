@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Bài 2 - Component Thẻ Sản Phẩm</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .grid { display: flex; gap: 20px; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; padding: 15px; border-radius: 8px; width: 220px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .card-img { width: 100%; height: 140px; object-fit: cover; border-radius: 4px; }
+    .price { font-weight: bold; color: #d9534f; }
+    .badge-out { color: red; font-weight: bold; }
+    .badge-in { color: green; }
+    .description { margin-top: 10px; font-size: 0.9em; color: #555; background: #f9f9f9; padding: 8px; border-radius: 4px; }
+    button:disabled { cursor: not-allowed; opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h2>Danh mục sản phẩm</h2>
+    <div class="grid">
+      <the-san-pham
+        v-for="sp in dsSanPham"
+        :key="sp.id"
+        :ten="sp.ten"
+        :gia="sp.gia"
+        :anh="sp.anh"
+        :mo-ta="sp.moTa"
+        :so-luong-ton="sp.soLuongTon">
+      </the-san-pham>
+    </div>
+  </div>
+
+  <script type="module">
+    import TheSanPham from './components/TheSanPham.js';
+
+    const { createApp } = Vue;
+
+    const app = createApp({
+      data() {
+        return {
+          dsSanPham: [
+            { id: 1, ten: 'Tai nghe Bluetooth', gia: 750000, anh: 'https://picsum.photos/200?random=1', moTa: 'Âm thanh chống ồn vượt trội, pin 24h.', soLuongTon: 15 },
+            { id: 2, ten: 'Bàn phím Cơ RGB', gia: 1200000, anh: 'https://picsum.photos/200?random=2', moTa: 'Switch gõ êm, đèn nền 16.8 triệu màu.', soLuongTon: 0 },
+            { id: 3, ten: 'Chuột không dây', gia: 350000, anh: 'https://picsum.photos/200?random=3', moTa: 'Thiết kế ergonomic bảo vệ cổ tay.', soLuongTon: 8 },
+            { id: 4, ten: 'Màn hình 27 inch 4K', gia: 8900000, anh: 'https://picsum.photos/200?random=4', moTa: 'Độ phân giải siêu nét, màu chuẩn đồ họa.', soLuongTon: 3 }
+          ]
+        };
+      }
+    });
+
+    app.component('the-san-pham', TheSanPham);
+    app.mount('#app');
+  </script>
+</body>
+</html>
