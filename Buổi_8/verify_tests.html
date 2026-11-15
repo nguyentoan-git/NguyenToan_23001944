@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Kiểm thử & Giám sát Dữ liệu API (Câu 4)</title>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #f8fafc; color: #1e293b; padding: 30px 15px; margin: 0; }
+        .box { max-width: 900px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        h1 { margin-top: 0; font-size: 22px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
+        .controls { display: flex; gap: 12px; margin-bottom: 25px; align-items: center; }
+        button {
+            background: #2563eb; color: #fff; border: none; padding: 10px 20px;
+            border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s;
+        }
+        button:hover { background: #1d4ed8; }
+        .btn-secondary { background: #64748b; }
+        .btn-secondary:hover { background: #475569; }
+        .test-card {
+            border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px;
+            background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+        .test-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .test-title { font-weight: 600; font-size: 15px; color: #334155; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+        .badge-pass { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .badge-fail { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+        @media (max-width: 640px) { .data-grid { grid-template-columns: 1fr; } }
+        .data-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-size: 13px; }
+        .data-box h4 { margin: 0 0 6px 0; font-size: 13px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
+        pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 0; }
+        table.live-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+        table.live-table th, table.live-table td { border: 1px solid #cbd5e1; padding: 6px 10px; text-align: left; }
+        table.live-table th { background: #f1f5f9; color: #334155; }
+        .live-preview-section { margin-top: 30px; border-top: 2px solid #e2e8f0; padding-top: 20px; }
+        .live-preview-section h3 { margin-top: 0; font-size: 17px; color: #1e293b; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>Kiểm tra & Giám sát Dữ liệu Thực tế (Bài 4)</h1>
+        <div class="controls">
+            <button onclick="runAllTests()">Chạy kiểm thử & Xem dữ liệu thực tế</button>
+            <button class="btn-secondary" onclick="fetchLiveDatabase()">Tải lại dữ liệu MySQL hiện tại</button>
+        </div>
+
+        <div id="results"></div>
+
+        <div class="live-preview-section">
+            <h3>Database hiện tại</h3>
+            <div id="live-table-container">Đang tải dữ liệu...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'api/products.php';
+
+        async function fetchLiveDatabase() {
+            const container = document.getElementById('live-table-container');
+            try {
+                const res = await fetch(API_URL);
+                const result = await res.json();
+                if (result.success && result.data.length > 0) {
+                    let html = `<table class="live-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tên sản phẩm</th>
+                                <th>Đơn giá (VNĐ)</th>
+                                <th>Số lượng tồn</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                    result.data.forEach(p => {
+                        html += `<tr>
+                            <td>${p.id}</td>
+                            <td><b>${escapeHtml(p.name)}</b></td>
+                            <td>${Number(p.price).toLocaleString('vi-VN')}</td>
+                            <td>${p.stock}</td>
+                        </tr>`;
+                    });
+                    html += `</tbody></table>`;
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<p style="color: #64748b;">Không có sản phẩm nào trong cơ sở dữ liệu.</p>';
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color: #b91c1c;">Lỗi kết nối API: ${err.message}</p>`;
+            }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function renderTestCard(title, passed, requestDetails, responseDetails, currentList) {
+            const container = document.getElementById('results');
+            const card = document.createElement('div');
+            card.className = 'test-card';
+            
+            let listHtml = '';
+            if (currentList && currentList.length > 0) {
+                listHtml = `<table class="live-table">
+                    <tr><th>ID</th><th>Tên</th><th>Giá</th><th>Tồn</th></tr>`;
+                currentList.forEach(p => {
+                    listHtml += `<tr><td>${p.id}</td><td>${escapeHtml(p.name)}</td><td>${Number(p.price).toLocaleString('vi-VN')}</td><td>${p.stock}</td></tr>`;
+                });
+                listHtml += `</table>`;
+            } else {
+                listHtml = '<p style="font-size:12px; color:#64748b;">Không có sản phẩm trong danh sách.</p>';
+            }
+
+            card.innerHTML = `
+                <div class="test-header">
+                    <span class="test-title">${title}</span>
+                    <span class="badge ${passed ? 'badge-pass' : 'badge-fail'}">${passed ? 'ĐẠT' : 'THẤT BẠI'}</span>
+                </div>
+                <div class="data-grid">
+                    <div class="data-box">
+                        <h4>Dữ liệu gửi đi / Phản hồi API</h4>
+                        <pre>Request: ${JSON.stringify(requestDetails, null, 2)}\nResponse: ${JSON.stringify(responseDetails, null, 2)}</pre>
+                    </div>
+                    <div class="data-box">
+                        <h4>Bảng dữ liệu mới</h4>
+                        ${listHtml}
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        async function runAllTests() {
+            const container = document.getElementById('results');
+            container.innerHTML = '';
+            let createdId = null;
+
+            // Tình huống 1: Thêm sản phẩm hợp lệ
+            try {
+                const reqPayload = { name: 'Bút chì kiểm thử 2B', price: 4500, stock: 25 };
+                const postRes = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqPayload)
+                });
+                const postData = await postRes.json();
+                
+                const getRes = await fetch(API_URL);
+                const getData = await getRes.json();
+
+                if (postData.success && postData.data && postData.data.id) {
+                    createdId = postData.data.id;
+                } else {
+                    const found = getData.data.find(p => p.name === 'Bút chì kiểm thử 2B');
+                    if (found) createdId = found.id;
+                }
+
+                const passed = postData.success && getData.success;
+                renderTestCard('Tình huống 1: Thêm sản phẩm mới và kiểm tra CSDL', passed, reqPayload, postData, getData.data);
+            } catch (e) {
+                renderTestCard('Tình huống 1: Thêm sản phẩm mới', false, {}, { error: e.message }, []);
+            }
+
+            // Tình huống 2: Sửa đơn giá
+            if (createdId) {
+                try {
+                    const reqPayload = { name: 'Bút chì kiểm thử 2B', price: 7500, stock: 25 };
+                    const putRes = await fetch(`${API_URL}?id=${createdId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(reqPayload)
+                    });
+                    const putData = await putRes.json();
+
+                    const getRes = await fetch(API_URL);
+                    const getData = await getRes.json();
+                    const updatedItem = getData.data.find(p => Number(p.id) === Number(createdId));
+                    const passed = putData.success && updatedItem && Number(updatedItem.price) === 7500;
+
+                    renderTestCard(`Tình huống 2: Sửa đơn giá sản phẩm (ID: ${createdId})`, passed, reqPayload, putData, getData.data);
+                } catch (e) {
+                    renderTestCard('Tình huống 2: Sửa đơn giá sản phẩm', false, {}, { error: e.message }, []);
+                }
+            }
+
+            // Tình huống 3: Gửi tồn kho = -1
+            try {
+                const reqPayload = { name: 'Sản phẩm lỗi tồn kho', price: 10000, stock: -1 };
+                const beforeRes = await fetch(API_URL);
+                const beforeData = await beforeRes.json();
+                const beforeCount = beforeData.data.length;
+
+                const invalidRes = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqPayload)
+                });
+                const invalidData = await invalidRes.json();
+
+                const afterRes = await fetch(API_URL);
+                const afterData = await afterRes.json();
+                const afterCount = afterData.data.length;
+
+                const passed = invalidData.success === false && beforeCount === afterCount;
+                renderTestCard('Tình huống 3: Chặn tồn kho âm (-1) từ PHP & MySQL', passed, reqPayload, { httpStatus: invalidRes.status, ...invalidData }, afterData.data);
+            } catch (e) {
+                renderTestCard('Tình huống 3: Kiểm tra tồn kho âm', false, {}, { error: e.message }, []);
+            }
+
+            // Tình huống 4: Xóa sản phẩm
+            if (createdId) {
+                try {
+                    const delRes = await fetch(`${API_URL}?id=${createdId}`, { method: 'DELETE' });
+                    const delData = await delRes.json();
+
+                    const getRes = await fetch(API_URL);
+                    const getData = await getRes.json();
+                    const stillExists = getData.data.some(p => Number(p.id) === Number(createdId));
+                    const passed = delData.success && !stillExists;
+
+                    renderTestCard(`Tình huống 4: Xóa sản phẩm thử nghiệm (ID: ${createdId})`, passed, { action: 'DELETE', id: createdId }, delData, getData.data);
+                } catch (e) {
+                    renderTestCard('Tình huống 4: Xóa sản phẩm', false, {}, { error: e.message }, []);
+                }
+            }
+
+            await fetchLiveDatabase();
+        }
+        window.onload = () => {
+            fetchLiveDatabase();
+        };
+    </script>
+</body>
+</html>
