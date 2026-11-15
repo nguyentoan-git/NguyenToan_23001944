@@ -1,7 +1,9 @@
 CREATE DATABASE IF NOT EXISTS shop_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE shop_db;
 
-CREATE TABLE IF NOT EXISTS products (
+DROP TABLE IF EXISTS products;
+
+CREATE TABLE products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     price INT NOT NULL CHECK (price > 0),
