@@ -8,6 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
+
 $host = '127.0.0.1';
 $db   = 'shop_db';
 $user = 'root';
@@ -74,12 +75,66 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
     case 'GET':
+        // Kiểm tra tham số phân trang page và limit
+        $page = 1;
+        if (isset($_GET['page'])) {
+            $pageVal = filter_var($_GET['page'], FILTER_VALIDATE_INT);
+            if ($pageVal === false || $pageVal < 1) {
+                http_response_code(400);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Tham số page phải là số nguyên dương (>= 1).'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $page = $pageVal;
+        }
+
+        $limit = 5;
+        if (isset($_GET['limit'])) {
+            $limitVal = filter_var($_GET['limit'], FILTER_VALIDATE_INT);
+            if ($limitVal === false || $limitVal !== 5) {
+                http_response_code(400);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Tham số limit không hợp lệ (yêu cầu limit = 5).'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $limit = $limitVal;
+        }
+
         try {
-            $stmt = $pdo->query("SELECT id, name, price, stock FROM products ORDER BY id ASC");
+            // Đếm tổng số sản phẩm
+            $countStmt = $pdo->query("SELECT COUNT(*) FROM products");
+            $total = (int)$countStmt->fetchColumn();
+
+            // Tính tổng số trang (tối thiểu là 1)
+            $totalPages = max(1, (int)ceil($total / $limit));
+
+            // Nếu page vượt quá trang cuối, trả về trang cuối cùng
+            if ($page > $totalPages) {
+                $page = $totalPages;
+            }
+
+            $offset = ($page - 1) * $limit;
+
+            // Sắp xếp theo id giảm dần và phân trang
+            $stmt = $pdo->prepare("SELECT id, name, price, stock, image FROM products ORDER BY id DESC LIMIT :limit OFFSET :offset");
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            $stmt->execute();
             $products = $stmt->fetchAll();
+
             echo json_encode([
-                'success' => true,
-                'data'    => $products
+                'success'    => true,
+                'data'       => $products,
+                'pagination' => [
+                    'page'        => $page,
+                    'limit'       => $limit,
+                    'total'       => $total,
+                    'total_pages' => $totalPages
+                ]
             ], JSON_UNESCAPED_UNICODE);
         } catch (PDOException $e) {
             http_response_code(500);
@@ -122,7 +177,8 @@ switch ($method) {
                     'id'    => $newId,
                     'name'  => $data['name'],
                     'price' => $data['price'],
-                    'stock' => $data['stock']
+                    'stock' => $data['stock'],
+                    'image' => null
                 ]
             ], JSON_UNESCAPED_UNICODE);
         } catch (PDOException $e) {
@@ -145,9 +201,10 @@ switch ($method) {
             exit;
         }
 
-        $checkStmt = $pdo->prepare("SELECT id FROM products WHERE id = :id");
+        $checkStmt = $pdo->prepare("SELECT id, image FROM products WHERE id = :id");
         $checkStmt->execute([':id' => $id]);
-        if (!$checkStmt->fetch()) {
+        $existingProduct = $checkStmt->fetch();
+        if (!$existingProduct) {
             http_response_code(404);
             echo json_encode([
                 'success' => false,
@@ -186,7 +243,8 @@ switch ($method) {
                     'id'    => $id,
                     'name'  => $data['name'],
                     'price' => $data['price'],
-                    'stock' => $data['stock']
+                    'stock' => $data['stock'],
+                    'image' => $existingProduct['image']
                 ]
             ], JSON_UNESCAPED_UNICODE);
         } catch (PDOException $e) {
@@ -210,16 +268,29 @@ switch ($method) {
         }
 
         try {
-            $stmt = $pdo->prepare("DELETE FROM products WHERE id = :id");
-            $stmt->execute([':id' => $id]);
+            // Lấy thông tin ảnh cũ để dọn dẹp file nếu cần
+            $imgStmt = $pdo->prepare("SELECT image FROM products WHERE id = :id");
+            $imgStmt->execute([':id' => $id]);
+            $productToDelete = $imgStmt->fetch();
 
-            if ($stmt->rowCount() === 0) {
+            if (!$productToDelete) {
                 http_response_code(404);
                 echo json_encode([
                     'success' => false,
                     'message' => 'Sản phẩm không tồn tại hoặc đã bị xóa trước đó.'
                 ], JSON_UNESCAPED_UNICODE);
                 exit;
+            }
+
+            $stmt = $pdo->prepare("DELETE FROM products WHERE id = :id");
+            $stmt->execute([':id' => $id]);
+
+            // Xóa file ảnh vật lý nếu có
+            if (!empty($productToDelete['image'])) {
+                $filePath = __DIR__ . '/../' . $productToDelete['image'];
+                if (file_exists($filePath)) {
+                    @unlink($filePath);
+                }
             }
 
             echo json_encode([
