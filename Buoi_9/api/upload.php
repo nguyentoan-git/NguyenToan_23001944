@@ -42,9 +42,11 @@ try {
     exit;
 }
 
-// 1. Kiểm tra mã sản phẩm
-$productId = isset($_POST['product_id']) ? filter_var($_POST['product_id'], FILTER_VALIDATE_INT) : false;
-if ($productId === false || $productId <= 0) {
+$productId = isset($_POST['product_id']) && preg_match('/^[1-9]\d*$/', (string)$_POST['product_id'])
+    ? (int)$_POST['product_id']
+    : 0;
+
+if ($productId <= 0) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
@@ -53,7 +55,6 @@ if ($productId === false || $productId <= 0) {
     exit;
 }
 
-// Kiểm tra sản phẩm tồn tại trong CSDL
 $stmt = $pdo->prepare("SELECT id, image FROM products WHERE id = :id");
 $stmt->execute([':id' => $productId]);
 $product = $stmt->fetch();
@@ -67,7 +68,6 @@ if (!$product) {
     exit;
 }
 
-// 2. Kiểm tra file tải lên
 if (!isset($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE) {
     http_response_code(400);
     echo json_encode([
@@ -78,32 +78,26 @@ if (!isset($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE
 }
 
 $file = $_FILES['image'];
+$errorMsg = 'Vui lòng chọn định dạng ảnh .jpg, .jpeg hoặc .png (kích thước tối đa 2 MB).';
 
 if ($file['error'] !== UPLOAD_ERR_OK) {
-    $errMsg = 'Lỗi khi tải tệp lên máy chủ.';
     if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE) {
-        $errMsg = 'Dung lượng ảnh vượt quá giới hạn cho phép (tối đa 2 MB).';
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'message' => $errorMsg
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => $errMsg
+        'message' => 'Lỗi khi tải tệp lên máy chủ.'
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// Kiểm tra dung lượng tối đa 2MB (2 * 1024 * 1024 bytes)
 $maxSize = 2 * 1024 * 1024;
-if ($file['size'] > $maxSize) {
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Dung lượng ảnh vượt quá 2 MB.'
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-// Kiểm tra loại ảnh thực tế bằng finfo (MIME type thực sự của nội dung file)
 $finfo = new finfo(FILEINFO_MIME_TYPE);
 $realMimeType = $finfo->file($file['tmp_name']);
 
@@ -112,44 +106,41 @@ $allowedMimes = [
     'image/png'  => 'png'
 ];
 
-if (!array_key_exists($realMimeType, $allowedMimes)) {
+if ($file['size'] <= 0 || $file['size'] > $maxSize || !array_key_exists($realMimeType, $allowedMimes)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'Định dạng ảnh không hợp lệ. Chỉ chấp nhận tệp JPG, JPEG hoặc PNG thực tế.'
+        'message' => $errorMsg
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// Tạo thư mục uploads nếu chưa tồn tại
-$uploadDir = __DIR__ . '/../uploads';
+$uploadDir = __DIR__ . '/../upload';
 if (!is_dir($uploadDir)) {
     if (!mkdir($uploadDir, 0777, true)) {
         http_response_code(500);
         echo json_encode([
             'success' => false,
-            'message' => 'Không thể tạo thư mục lưu trữ ảnh trên máy chủ.'
+            'message' => 'Không thể tạo thư mục upload trên máy chủ.'
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 }
 
-// Tạo tên file duy nhất
 $extension = $allowedMimes[$realMimeType];
-$uniqueFileName = 'prod_' . $productId . '_' . uniqid('', true) . '.' . $extension;
+$uniqueFileName = 'prod_' . $productId . '_' . bin2hex(random_bytes(8)) . '.' . $extension;
 $destinationPath = $uploadDir . '/' . $uniqueFileName;
-$relativeDbPath = 'uploads/' . $uniqueFileName;
+$relativeDbPath = 'upload/' . $uniqueFileName;
 
 if (!move_uploaded_file($file['tmp_name'], $destinationPath)) {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Không thể lưu tệp ảnh vào thư mục uploads.'
+        'message' => 'Không thể lưu tệp ảnh vào thư mục upload.'
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// Cập nhật đường dẫn ảnh mới vào CSDL
 try {
     $updateStmt = $pdo->prepare("UPDATE products SET image = :image WHERE id = :id");
     $updateStmt->execute([
@@ -157,10 +148,9 @@ try {
         ':id'    => $productId
     ]);
 
-    // Chỉ xóa ảnh cũ sau khi cập nhật ảnh mới thành công
     if (!empty($product['image']) && $product['image'] !== $relativeDbPath) {
-        $oldFilePath = __DIR__ . '/../' . $product['image'];
-        if (file_exists($oldFilePath)) {
+        $oldFilePath = __DIR__ . '/../' . ltrim($product['image'], '/');
+        if (file_exists($oldFilePath) && is_file($oldFilePath)) {
             @unlink($oldFilePath);
         }
     }
@@ -174,8 +164,7 @@ try {
         ]
     ], JSON_UNESCAPED_UNICODE);
 } catch (PDOException $e) {
-    // Xóa file vừa lưu nếu cập nhật DB lỗi
-    if (file_exists($destinationPath)) {
+    if (file_exists($destinationPath) && is_file($destinationPath)) {
         @unlink($destinationPath);
     }
     http_response_code(500);
